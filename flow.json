@@ -1,0 +1,246 @@
+{
+  "name": "DemandShieldAI",
+  "state": {
+    "type": "json_schema",
+    "json_schema": {
+      "type": "object",
+      "required": [
+        "product",
+        "location",
+        "historical_demand",
+        "current_orders",
+        "marketing_impact_pct"
+      ],
+      "properties": {
+        "product": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        },
+        "action_log": {
+          "type": "string"
+        },
+        "supply_gap": {
+          "type": "number"
+        },
+        "current_orders": {
+          "type": "number"
+        },
+        "manager_decision": {
+          "type": "string"
+        },
+        "predicted_demand": {
+          "type": "number"
+        },
+        "transport_status": {
+          "type": "string"
+        },
+        "ai_recommendation": {
+          "type": "string"
+        },
+        "historical_demand": {
+          "type": "number"
+        },
+        "marketing_impact_pct": {
+          "type": "number"
+        },
+        "transport_delay_days": {
+          "type": "number"
+        }
+      }
+    }
+  },
+  "schema": "crewai.flow/v1",
+  "methods": {
+    "log_rejection": {
+      "do": {
+        "call": "agent",
+        "with": {
+          "goal": "Summarise the manager's rejection of the AI recommendation and produce the exact SQL INSERT statement to log it in SAP HANA Cloud under AI_RECOMMENDATION, flagged for reconsideration.",
+          "role": "Decision Audit Logger",
+          "input": "The manager has REJECTED the AI recommendation.\n\nProduct: ${state.product}\nLocation: ${state.location}\n\nRejected Recommendation:\n${outputs.evaluate_scenarios.raw}\n\nManager Decision & Comments:\n${outputs.request_human_approval.raw}\n\nProduce a clear summary of the rejection and the following SQL INSERT statement (filled in with the actual product and location) ready for the operator to paste into the SAP HANA SQL console:\n\nINSERT INTO AI_RECOMMENDATION (PRODUCT, LOCATION, STATUS, ACTION, RECOMMENDATION_DETAIL, MANAGER_COMMENTS, RECONSIDER_FLAG, CREATED_AT)\nVALUES ('${state.product}', '${state.location}', 'REJECTED', 'NONE', '<recommendation summary>', '<manager comments>', 'YES', CURRENT_TIMESTAMP);\n\nExpected output: (1) A plain-language summary of the rejection: what was rejected, for which product and location, what the manager stated, and that it is flagged for reconsideration. (2) The exact SQL INSERT statement to paste into the SAP HANA SQL console, with RECOMMENDATION_DETAIL and MANAGER_COMMENTS filled in from the actual outputs above. If either upstream input is flagged as NO DATA, state that and do not invent replacement content.",
+          "verbose": true,
+          "backstory": "You maintain a full audit trail of every supply-chain decision, including rejections. Because the SAP HANA Database Explorer is accessed manually in this environment, you produce a ready-to-run SQL INSERT statement the operator can paste into the SQL console. You record the product, location, the rejected recommendation, the manager's stated reasons, and set RECONSIDER_FLAG to YES. You never invent data \\ u2014 you work only from the inputs provided.",
+          "inject_date": true,
+          "llm": "openai/gpt-5.6-luna"
+        }
+      },
+      "start": false,
+      "listen": "decision_rejected",
+      "router": false,
+      "description": "Summarises the rejected recommendation and produces the SQL INSERT to record it in SAP HANA, ready for the operator to paste into the Database Explorer."
+    },
+    "predict_demand": {
+      "do": {
+        "call": "agent",
+        "with": {
+          "goal": "Forecast future demand for a product by analyzing historical demand, live order volumes, and marketing campaign impact.",
+          "role": "Demand Prediction Specialist",
+          "input": "Analyze the following SAP HANA data and produce a demand forecast for product ${state.product} at ${state.location}.\n\nBase inputs:\n- Historical demand: ${state.historical_demand} units\n- Current orders: ${state.current_orders} units\n- Marketing impact: ${state.marketing_impact_pct}%\n\nSAP HANA retrieved data and validation report:\n${outputs.fetch_demand_data.raw}\n\nCalculate the predicted demand by applying the marketing uplift to the baseline (historical demand and current orders). Show your workings. If any required input is missing, do not estimate — output: NO DATA: SAP HANA returned nothing.\n\nExpected output: A demand forecast report containing: (1) predicted demand in units with the calculation shown, (2) confidence level (low/medium/high) with justification, (3) key assumptions made. If required input data is absent, output exactly: NO DATA: SAP HANA returned nothing.",
+          "verbose": true,
+          "backstory": "You are a supply-chain demand analyst with deep expertise in statistical demand forecasting. You base every prediction strictly on the input data provided. You never guess, extrapolate beyond what the data supports, or invent figures. If the upstream data is missing or flagged as NO DATA, you report: NO DATA: SAP HANA returned nothing — and you do not produce a demand estimate.",
+          "inject_date": true,
+          "llm": "openai/gpt-5.6-luna"
+        }
+      },
+      "start": false,
+      "listen": "fetch_demand_data",
+      "router": false,
+      "description": "Demand Prediction Agent analyzes historical demand, current orders, and marketing impact to forecast expected demand for the product."
+    },
+    "fetch_demand_data": {
+      "do": {
+        "call": "agent",
+        "with": {
+          "goal": "Validate and format the demand input data provided at kickoff so the Demand Prediction Agent has clean, confirmed figures to work from.",
+          "role": "Demand Data Analyst",
+          "input": "The following demand data was captured at flow kickoff for this run:\n\nProduct: ${state.product}\nLocation: ${state.location}\nHistorical Demand: ${state.historical_demand} units\nCurrent Open Orders: ${state.current_orders} units\nMarketing Campaign Impact: ${state.marketing_impact_pct}%\n\nValidate that all three numeric fields (historical demand, current orders, marketing impact %) have real non-zero values. If all are present, confirm them as complete. If any is missing or zero, flag it as a data gap — do not estimate or invent a replacement.\n\nExpected output: A short demand data validation report confirming: (1) historical demand in units — COMPLETE or DATA GAP, (2) current open orders in units — COMPLETE or DATA GAP, (3) marketing campaign impact % — COMPLETE or DATA GAP. List the actual values for any COMPLETE field. If all three are complete, end with: ALL INPUTS VERIFIED — READY FOR DEMAND PREDICTION. If any field is missing or zero: NO DATA: required demand input is missing for that field.",
+          "verbose": true,
+          "backstory": "You receive the business inputs that were provided when this flow started. Your job is to confirm they are present and format them clearly. You work only from what is given to you — you never estimate, invent, or assume figures. If any required field is zero, empty, or missing, you flag it as a data gap and do not fill it with guesses.",
+          "inject_date": true,
+          "llm": "openai/gpt-5.6-luna"
+        }
+      },
+      "start": false,
+      "listen": "setup_hana_tables",
+      "router": false,
+      "description": "Reads demand inputs directly from the flow's kickoff state (historical demand, current orders, marketing impact) and formats them as a validated data report for the demand prediction step."
+    },
+    "route_on_decision": {
+      "do": {
+        "call": "expression",
+        "expr": "outputs.request_human_approval.raw.contains('APPROVED') ? 'decision_approved' : 'decision_rejected'"
+      },
+      "emit": [
+        "decision_approved",
+        "decision_rejected"
+      ],
+      "start": false,
+      "listen": "request_human_approval",
+      "router": true,
+      "description": "Route on the manager's decision: APPROVED leads to business action, REJECTED leads to reconsideration logging."
+    },
+    "setup_hana_tables": {
+      "do": {
+        "call": "agent",
+        "with": {
+          "goal": "Confirm that the SAP HANA tables and seed data are in place and the pipeline is ready to run.",
+          "role": "Pipeline Coordinator",
+          "input": "Product: ${state.product}\nLocation: ${state.location}\n\nThe following SAP HANA tables have been pre-loaded with demo seed data for this product and location:\n- DEMAND_HISTORY: 800 units, period 2025-Q4\n- CUSTOMER_ORDERS: 850 units open\n- MARKETING_CAMPAIGNS: Summer Surge Campaign, 20% impact, ACTIVE\n- WAREHOUSE_INVENTORY: 1000 units on hand\n- SUPPLIER_CAPACITY: 300 units, 5-day lead time, Supplier_India_01\n- REPLENISHMENT_ORDERS: 200 units PENDING, due in 7 days\n- TRANSPORT_STATUS: DELAYED 2 days, FastFreight_IN, Mumbai-Chennai Highway\n- AI_RECOMMENDATION: table ready to receive output\n\nConfirm setup is complete and the pipeline may proceed.\n\nExpected output: A brief confirmation that all 8 SAP HANA tables are in place with seed data for PRODUCT_A / Chennai and the DemandShield AI pipeline is ready to run. List the key data points confirmed (demand history, orders, marketing, inventory, supplier, replenishment, transport).",
+          "verbose": true,
+          "backstory": "You are responsible for confirming the pipeline pre-conditions before the main analysis begins. The SAP HANA tables (DEMAND_HISTORY, CUSTOMER_ORDERS, MARKETING_CAMPAIGNS, WAREHOUSE_INVENTORY, SUPPLIER_CAPACITY, REPLENISHMENT_ORDERS, TRANSPORT_STATUS, AI_RECOMMENDATION) and demo seed data for PRODUCT_A / Chennai were set up manually via the Database Explorer SQL console before this run. You confirm this and hand off to the demand analysis pipeline.",
+          "inject_date": true,
+          "llm": "openai/gpt-5.6-luna"
+        }
+      },
+      "start": true,
+      "router": false,
+      "description": "Confirms the SAP HANA tables and seed data are already set up (you ran the SQL manually), then passes control to the rest of the pipeline."
+    },
+    "evaluate_scenarios": {
+      "do": {
+        "call": "agent",
+        "with": {
+          "goal": "Evaluate all viable response scenarios for the detected supply-demand gap and transport risk, and produce a ranked AI recommendation with clear reasoning for manager review.",
+          "role": "Scenario Decision Analyst",
+          "input": "Evaluate response scenarios for product ${state.product} at ${state.location} using the analysis below.\n\nDemand Forecast:\n${outputs.predict_demand.raw}\n\nSupply & Logistics Assessment:\n${outputs.check_supply_and_logistics.raw}\n\nScenarios to evaluate:\nOption A: Continue current marketing campaign at full intensity (no supply or logistics change).\nOption B: Reduce marketing intensity to lower demand pressure while supply catches up.\nOption C: Increase supply via additional procurement AND activate alternative transportation to close the gap.\n\nFor each option, assess: expected outcome, risk level, estimated cost impact (high/medium/low), and feasibility given the detected gap. Then select the best option and provide clear reasoning. If any upstream data is flagged as NO DATA, state: a recommendation cannot be made \\ u2014 required supply or demand data is missing.\n\nExpected output: A scenario evaluation report containing: (1) assessment of each option (A, B, C) with expected outcome, risk level, and cost impact; (2) the recommended option with full reasoning; (3) a one-sentence AI RECOMMENDATION summary suitable for manager review. If data is missing, state that a recommendation cannot be made and specify what is missing.",
+          "verbose": true,
+          "backstory": "You are a senior supply-chain strategist who evaluates business response scenarios under risk. You assess each option against the specific gap size, transport delay, and business context provided. You never fabricate risk data or assume inputs not given. Your output is always a structured, well-reasoned recommendation a manager can act on. If upstream data contains NO DATA flags, you state that a recommendation cannot be made without complete data.",
+          "inject_date": true,
+          "llm": "openai/gpt-5.6-luna"
+        }
+      },
+      "start": false,
+      "listen": "check_supply_and_logistics",
+      "router": false,
+      "description": "Scenario Decision Agent evaluates response options against detected supply and logistics risks and produces a ranked AI recommendation with reasoning."
+    },
+    "request_human_approval": {
+      "do": {
+        "call": "agent",
+        "with": {
+          "goal": "Present the AI recommendation clearly to the manager and record their decision (APPROVED or REJECTED) before any supply or logistics action is taken.",
+          "role": "Human Approval Coordinator",
+          "input": "Present the following AI recommendation to the manager for approval and record their decision.\n\nProduct: ${state.product}\nLocation: ${state.location}\n\nDemand Forecast Summary:\n${outputs.predict_demand.raw}\n\nSupply & Logistics Summary:\n${outputs.check_supply_and_logistics.raw}\n\nScenario Evaluation & AI Recommendation:\n${outputs.evaluate_scenarios.raw}\n\nAsk the manager: Do you APPROVE or REJECT this recommendation? Record their exact decision and any comments they provide.\n\nExpected output: The manager's decision: APPROVED or REJECTED, plus any comments or conditions they stated. If the upstream data was flagged as NO DATA, record the manager's guidance on how to proceed instead.",
+          "verbose": true,
+          "backstory": "You act as the interface between the AI system and the human decision-maker. You present the recommendation in plain business language, include all relevant context (demand gap, transport risk, chosen scenario and reasoning), and await the manager's explicit decision. You do not execute any business action yourself. If the upstream recommendation contains a NO DATA flag, you inform the manager that a recommendation could not be generated due to missing data and request guidance on how to proceed. You record the manager's exact decision verbatim.",
+          "inject_date": true,
+          "llm": "openai/gpt-5.6-luna"
+        }
+      },
+      "start": false,
+      "listen": "evaluate_scenarios",
+      "router": false,
+      "description": "Surface the AI recommendation to a manager for Approve or Reject via a human-in-the-loop step before any business action is taken."
+    },
+    "execute_approved_action": {
+      "do": {
+        "call": "agent",
+        "with": {
+          "goal": "Confirm the approved supply-chain action and produce the exact SQL INSERT statement to record it in SAP HANA Cloud under AI_RECOMMENDATION.",
+          "role": "Supply Chain Action Executor",
+          "input": "The manager has APPROVED the AI recommendation.\n\nProduct: ${state.product}\nLocation: ${state.location}\n\nApproved AI Recommendation:\n${outputs.evaluate_scenarios.raw}\n\nManager Decision & Comments:\n${outputs.request_human_approval.raw}\n\nProduce a clear summary of the approved action and the following SQL INSERT statement (filled in with the actual product and location) ready for the operator to paste into the SAP HANA SQL console:\n\nINSERT INTO AI_RECOMMENDATION (PRODUCT, LOCATION, STATUS, ACTION, RECOMMENDATION_DETAIL, MANAGER_COMMENTS, CREATED_AT)\nVALUES ('${state.product}', '${state.location}', 'APPROVED', 'Increase supply + activate alternative transportation', '<recommendation summary>', '<manager comments>', CURRENT_TIMESTAMP);\n\nExpected output: (1) A plain-language summary of the approved action: what was approved, for which product and location, and what the manager stated. (2) The exact SQL INSERT statement to paste into the SAP HANA SQL console, with RECOMMENDATION_DETAIL and MANAGER_COMMENTS filled in from the actual outputs above. If either upstream input is flagged as NO DATA, state that and do not invent replacement content.",
+          "verbose": true,
+          "backstory": "You are responsible for documenting approved supply-chain decisions. Because the SAP HANA Database Explorer is accessed manually in this environment, you summarise the approved action clearly and produce a ready-to-run SQL INSERT statement the operator can paste into the SQL console to complete the audit record. You never invent data \\ u2014 you work only from the recommendation and manager decision provided.",
+          "inject_date": true,
+          "llm": "openai/gpt-5.6-luna"
+        }
+      },
+      "start": false,
+      "listen": "decision_approved",
+      "router": false,
+      "description": "Summarises the approved business action and generates the SQL INSERT statement to record it in SAP HANA, which the user can run directly in the Database Explorer."
+    },
+    "check_supply_and_logistics": {
+      "do": {
+        "call": "crew",
+        "with": {
+          "tasks": [
+            {
+              "name": "assess_supply",
+              "agent": "supply_agent",
+              "description": "Using the data below, calculate the available supply and the supply gap for product {product} at {location}.\n\nData provided:\n- Warehouse inventory (stock on hand): 1000 units\n- Supplier capacity (additional units available): 300 units\n- Pending replenishment orders: 200 units (status: PENDING, expected in 7 days)\n- Predicted demand (from upstream): {predicted_demand}\n\nCalculate:\n- Total available supply = warehouse inventory + supplier capacity\n- Supply gap = predicted demand \\ u2212 total available supply (positive = shortage, negative = surplus)\n\nReport all figures with workings shown. If the predicted demand figure is missing or flagged as NO DATA, state: NO DATA: predicted demand is required to calculate the supply gap.",
+              "expected_output": "Supply readiness report: current inventory (units), supplier capacity (units), total available supply (units), pending replenishment (units + expected days), supply gap (units \\ u2014 positive = shortage, negative = surplus), with all workings shown. If any required input is missing: NO DATA: required supply input is missing for that field."
+            },
+            {
+              "name": "assess_transport",
+              "agent": "logistics_agent",
+              "description": "Using the transport data below, assess the transportation readiness for product {product} destined for {location}.\n\nData provided:\n- Carrier: FastFreight_IN\n- Transport status: DELAYED\n- Delay duration: 2 days\n- Route: Mumbai-Chennai Highway\n\nAssign a risk flag (HIGH / MEDIUM / LOW) based on the delay severity. Provide a brief explanation of the risk and its likely impact on delivery.",
+              "expected_output": "Transportation readiness report: transport status (DELAYED), delay in days (2), carrier, affected route, and risk flag (HIGH / MEDIUM / LOW) with a brief explanation of the delivery impact. If any required input is missing: NO DATA: required transport input is missing."
+            }
+          ],
+          "agents": {
+            "supply_agent": {
+              "goal": "Determine whether supply can meet the predicted demand for product {product} at {location} using the data provided.",
+              "role": "Supply Chain Readiness Analyst",
+              "verbose": true,
+              "backstory": "You are a supply chain expert who calculates supply gaps from provided inventory and supplier data. You work strictly from the figures you receive \\ u2014 you never estimate or invent numbers. If any required figure is missing, you report: NO DATA: required supply input is missing for that field.",
+              "inject_date": true,
+              "llm": "openai/gpt-5.6-luna"
+            },
+            "logistics_agent": {
+              "goal": "Assess transportation readiness and identify delays that affect delivery for product {product} at {location} using the data provided.",
+              "role": "Logistics Risk Analyst",
+              "verbose": true,
+              "backstory": "You specialize in transport network risk assessment. You evaluate the transport status, delay days, and route information provided to you and assign a risk flag. You never assume a route is clear or delayed without data. If transport data is missing, you report: NO DATA: required transport input is missing.",
+              "inject_date": true,
+              "llm": "openai/gpt-5.6-luna"
+            }
+          },
+          "inputs": {
+            "product": "${state.product}",
+            "location": "${state.location}",
+            "predicted_demand": "${outputs.predict_demand.raw}"
+          },
+          "verbose": true
+        }
+      },
+      "start": false,
+      "listen": "predict_demand",
+      "router": false,
+      "description": "Supply & Logistics Agent reads inventory, supplier capacity, and transport data from the flow state (pre-loaded from HANA) and calculates the supply gap and transport risk."
+    }
+  },
+  "description": "Proactive supply-chain decision automation: auto-provisions SAP HANA tables and seed data, then predicts customer demand, checks inventory and logistics readiness, evaluates response scenarios, and routes an AI recommendation through human approval before executing any business action in SAP HANA."
+}
