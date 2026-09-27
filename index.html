@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Demand Shield AI</title>
+  <meta name="description" content="Demand forecasting and supply decision support powered by Demand Shield AI.">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div class="badge">AI DEMAND INTELLIGENCE</div>
+      <h1>Demand Shield AI</h1>
+      <p>Enter your demand information and let the deployed AI flow analyze demand, supply and logistics.</p>
+    </section>
+
+    <section class="card">
+      <form id="analysisForm">
+        <div class="grid">
+          <label>
+            <span>Product</span>
+            <input name="product" placeholder="e.g. Product A" maxlength="200" required>
+          </label>
+
+          <label>
+            <span>Location</span>
+            <input name="location" placeholder="e.g. Coimbatore" maxlength="200" required>
+          </label>
+
+          <label>
+            <span>Current Orders</span>
+            <input name="current_orders" type="number" min="0" step="any" placeholder="e.g. 120" required>
+          </label>
+
+          <label>
+            <span>Historical Demand</span>
+            <input name="historical_demand" type="number" min="0" step="any" placeholder="e.g. 100" required>
+          </label>
+
+          <label class="wide">
+            <span>Marketing Impact (%)</span>
+            <input name="marketing_impact_pct" type="number" step="any" placeholder="e.g. 15" required>
+            <small>Use 15 for a 15% expected marketing impact.</small>
+          </label>
+        </div>
+
+        <button id="analyzeButton" type="submit">
+          <span id="buttonText">Analyze Demand</span>
+          <span id="spinner" class="spinner hidden"></span>
+        </button>
+      </form>
+
+      <div id="message" class="message hidden"></div>
+
+      <section id="progress" class="result hidden">
+        <h2>Analysis in progress</h2>
+        <div class="progressLine"><span id="progressBar"></span></div>
+        <p id="progressText">Starting Demand Shield AI…</p>
+      </section>
+
+      <section id="approval" class="result approval hidden">
+        <h2>Human approval required</h2>
+        <p>The Demand Shield AI flow has paused at its approval step.</p>
+        <textarea id="approvalNote" placeholder="Optional note for the decision"></textarea>
+        <div class="approvalButtons">
+          <button id="approveButton" type="button">Approve & Continue</button>
+          <button id="rejectButton" class="secondary" type="button">Reject</button>
+        </div>
+      </section>
+
+      <section id="result" class="result hidden">
+        <div class="resultHeader">
+          <h2>Demand Shield Result</h2>
+          <button id="copyResult" class="copyButton" type="button">Copy</button>
+        </div>
+        <pre id="resultText"></pre>
+      </section>
+    </section>
+
+    <footer>
+      <span>Demand Shield AI</span>
+      <span>Powered by your deployed CrewAI Flow</span>
+    </footer>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
